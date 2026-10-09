@@ -166,7 +166,6 @@ void AutoConnectScreen::update(float delta)
                                 auto layer = window_render_layers[idx];
 
                                 if (pos.is_ship_window) {
-                                    // TODO currently all ship windows share one angle
                                     uint8_t window_flags = PreferencesManager::get("ship_window_flags", "1").toInt();
                                     new WindowScreen(layer, pos.ship_window_angle, window_flags);
                                 } else {

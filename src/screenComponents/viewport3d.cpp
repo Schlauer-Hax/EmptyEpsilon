@@ -146,6 +146,7 @@ void GuiViewport3D::onDraw(sp::RenderTarget& renderer)
         return;
     }
     renderer.finish();
+    ScopedCamera scoped_camera(camera);
    
     if (auto transform = my_spaceship.getComponent<sp::Transform>())
         soundManager->setListenerPosition(transform->getPosition(), transform->getRotation());
@@ -291,7 +292,6 @@ void GuiViewport3D::onDraw(sp::RenderTarget& renderer)
     {
         auto transform = my_spaceship.getComponent<sp::Transform>();
         auto physics = my_spaceship.getComponent<sp::Physics>();
-        static std::vector<glm::vec3> space_dust(2 * spacedust_particle_count);
         
         glm::vec2 dust_vector = physics ? (physics->getVelocity() / 100.f) : glm::vec2{0, 0};
         glm::vec3 dust_center = transform ? glm::vec3(transform->getPosition().x, transform->getPosition().y, 0.f) : camera_position;

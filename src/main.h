@@ -1,14 +1,11 @@
 #pragma once
 
-#include <glm/vec3.hpp>
+#include "camera.h"
 #include "graphics/font.h"
 #include "Renderable.h"
 #include "postProcessManager.h"
 #include "menus/optionsMenu.h"
 
-extern glm::vec3 camera_position;
-extern float camera_yaw;
-extern float camera_pitch;
 extern sp::Font* main_font;
 extern sp::Font* bold_font;
 extern RenderLayer* consoleRenderLayer;

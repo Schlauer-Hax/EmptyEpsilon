@@ -14,6 +14,7 @@ WindowScreen::WindowScreen(RenderLayer* render_layer, float angle, uint8_t flags
 : GuiCanvas(render_layer), angle(angle)
 {
     viewport = new GuiViewport3D(this, "VIEWPORT");
+    viewport->setCamera(CameraState{});
     if (flags & flag_callsigns)
       viewport->showCallsigns();
     if (flags & flag_headings)
@@ -50,17 +51,16 @@ void WindowScreen::update(float delta)
 
     if (auto transform = my_spaceship.getComponent<sp::Transform>())
     {
-        camera_yaw = transform->getRotation() + angle;
-        camera_pitch = 0.0f;
+        CameraState camera;
+        camera.yaw = transform->getRotation() + angle;
 
         auto physics = my_spaceship.getComponent<sp::Physics>();
         auto radius = 300.0f;
         if (physics)
             radius = physics->getSize().x;
-        auto position = transform->getPosition() + rotateVec2(glm::vec2(radius, 0), camera_yaw);
+        auto position = transform->getPosition() + rotateVec2(glm::vec2(radius, 0), camera.yaw);
 
-        camera_position.x = position.x + 1.0f; // small offset to prevent camera glitches on some models
-        camera_position.y = position.y;
-        camera_position.z = 0.0;
+        camera.position = {position.x + 1.0f, position.y, 0.0f}; // small offset to prevent camera glitches on some models
+        viewport->setCamera(camera);
     }
 }

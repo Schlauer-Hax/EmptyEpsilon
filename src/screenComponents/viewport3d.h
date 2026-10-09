@@ -3,15 +3,18 @@
 #include "gui/gui2_element.h"
 #include "glObjects.h"
 #include "graphics/shader.h"
+#include "camera.h"
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
+#include <vector>
 
 class GuiViewport3D : public GuiElement
 {
     bool show_callsigns = false;
     bool show_headings = false;
     bool show_spacedust = false;
+    std::optional<CameraState> camera;
 
     glm::mat4 projection_matrix;
     glm::mat4 view_matrix;
@@ -61,6 +64,7 @@ class GuiViewport3D : public GuiElement
 
     // Spacedust
     static constexpr size_t spacedust_particle_count = 1024;
+    std::vector<glm::vec3> space_dust{2 * spacedust_particle_count};
     std::array<uint32_t, static_cast<size_t>(Uniforms::SpacedustCount)> spacedust_uniforms;
     std::array<uint32_t, static_cast<size_t>(VertexAttributes::SpacedustCount)> spacedust_vertex_attributes;
     gl::Buffers<static_cast<size_t>(Buffers::SpacedustCount)> spacedust_buffer;
@@ -70,6 +74,8 @@ public:
     GuiViewport3D(GuiContainer* owner, string id);
 
     virtual void onDraw(sp::RenderTarget& target) override;
+
+    void setCamera(const CameraState& state) { camera = state; }
 
     GuiViewport3D* showCallsigns() { show_callsigns = true; return this; }
     GuiViewport3D* toggleCallsigns() { show_callsigns = !show_callsigns; return this; }

@@ -4,6 +4,56 @@ Started as a cross-platform, open-source "clone" of [Artemis Spaceship Bridge Si
 
 The game is written in C++ with the [SeriousProton](https://github.com/daid/SeriousProton) engine and uses [SDL2](http://www.libsdl.org/) for most of the heavy lifting.
 
+## Multiple monitors in this fork
+
+Ship windows (sideviews) keep their own camera position and angle, so they can run
+alongside the main screen in a single process without moving its camera. Space
+dust is also maintained separately for each viewport.
+
+For five monitors, start the Windows executable from PowerShell with:
+
+```powershell
+.\EmptyEpsilon.exe multimonitor=5
+```
+
+Select your ship and **Main screen** in the primary window. In each additional
+window, select **Ship window**, enter its angle relative to the ship, and click
+**Ready**. For example, use `-90`, `-45`, `45`, and `90` degrees for four sideviews;
+`0` looks forward. Adjust the angles to your monitor arrangement. You can also
+save `multimonitor=5` in `options.ini`. All windows use the same selected ship.
+
+### Windows builds
+
+The existing **CI/CD** GitHub Actions workflow cross-compiles a Windows x64 build
+on Linux using MinGW, CMake, Ninja, and `daid/SeriousProton`. This fork keeps that
+build and adds a downloadable ZIP and SHA-256 checksum; no separate CI service or
+private credentials are needed. The native Visual Studio job remains disabled,
+as it is upstream. The separate upstream `.tinyci` setup is not required.
+
+In your fork's **Actions** tab, enable workflows if GitHub asks, then select
+**CI/CD → Run workflow**. Pushes to `master` also build automatically. After the
+**Windows (Cross-Compile)** job succeeds, download **EmptyEpsilon-Windows-x64**
+from the run's artifacts and extract the contained `EmptyEpsilon.zip` before
+launching the game. Artifacts are retained for 30 days.
+
+Use the same build on the server and clients. By default the build date becomes
+the game's version number, so builds from different dates may not connect.
+
+### Checking camera isolation
+
+After configuring and building a native desktop build, run:
+
+```sh
+ctest --test-dir <build-directory> --output-on-failure
+```
+
+The camera regression test covers a main view and four sideviews across repeated
+frames, changing draw order, nested draws, and early returns. For a visual check,
+turn the ship with all five windows open: each sideview should retain its own
+relative angle, the main camera should move smoothly, and space dust should be
+visible in every viewport that has it enabled. Also try the main screen's
+front/back/left/right/target views and returning a sideview to ship selection.
+
 ## Download and install
 
 Official releases for Windows, Linux (as a .deb package), and Android (beta quality) are available from the [EmptyEpsilon website](https://daid.github.io/EmptyEpsilon/#tabs=5) or [GitHub releases](https://github.com/daid/EmptyEpsilon/releases). Make sure the host and all players run the same version number of EmptyEpsilon; otherwise, players won't be able to connect.
