@@ -2,6 +2,12 @@
 enable_language(OBJC OBJCXX)
 # Each preset builds one SDK; keep bundle generator expressions usable by scripts.
 set_property(GLOBAL PROPERTY XCODE_EMIT_EFFECTIVE_PLATFORM_NAME OFF)
+# Only the app belongs in an archive; installing static libraries makes it generic.
+set(CMAKE_XCODE_ATTRIBUTE_SKIP_INSTALL YES)
+# Keep symbols for TestFlight crash reports, including code in static dependencies.
+foreach(language C CXX OBJC OBJCXX)
+    string(APPEND CMAKE_${language}_FLAGS_RELEASE " -g")
+endforeach()
 include(FetchContent)
 find_package(Git REQUIRED)
 set(WITH_DISCORD OFF CACHE BOOL "Build with Discord support" FORCE)

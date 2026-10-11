@@ -1,0 +1,131 @@
+name: TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Empty Epsilon version matching your server (for example 2026.10.11)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: ipad
+            destination: iOS
+            platform: iPhoneOS
+          - target: appletv
+            destination: tvOS
+            platform: AppleTVOS
+    env:
+      TARGET: ${{ matrix.target }}
+      DESTINATION: ${{ matrix.destination }}
+      PLATFORM: ${{ matrix.platform }}
+      APP_VERSION: ${{ inputs.version }}
+      BUILD_NUMBER: ${{ github.run_number }}.${{ github.run_attempt }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPLE_BUNDLE_ID: ${{ vars.APPLE_BUNDLE_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check configuration
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          for name in APPLE_TEAM_ID APPLE_BUNDLE_ID KEY_ID ISSUER_ID PRIVATE_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing $name. See apple/README.md for TestFlight setup."
+              exit 1
+            fi
+          done
+          if [[ ! "$APP_VERSION" =~ ^[1-9][0-9]{0,3}\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)$ ]]; then
+            echo '::error::Version must contain three numbers, for example 2026.10.11.'
+            exit 1
+          fi
+          xcodebuild -version
+      - name: Install build tools
+        run: brew install cmake
+      - name: Configure
+        run: |
+          IFS=. read -r major minor patch <<< "$APP_VERSION"
+          cmake --preset "$TARGET" \
+            -DCPACK_PACKAGE_VERSION_MAJOR="$major" \
+            -DCPACK_PACKAGE_VERSION_MINOR="$minor" \
+            -DCPACK_PACKAGE_VERSION_PATCH="$patch" \
+            -DEE_APPLE_BUILD_NUMBER="$BUILD_NUMBER" \
+            -DEE_APPLE_BUNDLE_ID="$APPLE_BUNDLE_ID" \
+            -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
+      - name: Archive
+        run: |
+          set -o pipefail
+          xcodebuild archive -project "_build_$TARGET/EmptyEpsilon.xcodeproj" \
+            -scheme EmptyEpsilon -configuration Release \
+            -destination "generic/platform=$DESTINATION" \
+            -archivePath "$RUNNER_TEMP/EmptyEpsilon.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO -jobs 3 2>&1 | tee "$RUNNER_TEMP/archive.log"
+          python3 tests/appleBundle.py \
+            "$RUNNER_TEMP/EmptyEpsilon.xcarchive/Products/Applications/EmptyEpsilon.app" "$PLATFORM" Xcode
+      - name: Sign and upload to TestFlight
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          set -o pipefail
+          umask 077
+          key_path="$RUNNER_TEMP/AuthKey.p8"
+          trap 'rm -f "$key_path"' EXIT
+          printf '%s' "$PRIVATE_KEY" > "$key_path"
+          unset PRIVATE_KEY
+          python3 - <<'PY'
+          import os, pathlib, plistlib
+          options = {
+              "method": "app-store-connect",
+              "destination": "upload",
+              "signingStyle": "automatic",
+              "teamID": os.environ["APPLE_TEAM_ID"],
+              "manageAppVersionAndBuildNumber": False,
+              "uploadSymbols": True,
+          }
+          with (pathlib.Path(os.environ["RUNNER_TEMP"]) / "ExportOptions.plist").open("wb") as stream:
+              plistlib.dump(options, stream)
+          PY
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/EmptyEpsilon.xcarchive" \
+            -exportPath "$RUNNER_TEMP/TestFlight" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -allowProvisioningUpdates -authenticationKeyPath "$key_path" \
+            -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID" \
+            2>&1 | tee "$RUNNER_TEMP/upload.log"
+          echo "Uploaded $TARGET $APP_VERSION ($BUILD_NUMBER). Apple processing may take several minutes." >> "$GITHUB_STEP_SUMMARY"
+      - name: Package archive and crash symbols
+        if: always()
+        run: |
+          if [[ -d "$RUNNER_TEMP/EmptyEpsilon.xcarchive" ]]; then
+            ditto -c -k --sequesterRsrc --keepParent \
+              "$RUNNER_TEMP/EmptyEpsilon.xcarchive" "$RUNNER_TEMP/EmptyEpsilon-$TARGET.xcarchive.zip"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: TestFlight-${{ matrix.target }}-${{ inputs.version }}-${{ github.run_number }}.${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/EmptyEpsilon-*.xcarchive.zip
+            ${{ runner.temp }}/archive.log
+            ${{ runner.temp }}/upload.log
+            ${{ runner.temp }}/TestFlight/*.ipa
+          if-no-files-found: ignore
+          retention-days: 7

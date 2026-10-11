@@ -39,7 +39,7 @@ cmake --preset ipad-simulator
 cmake --build --preset ipad-simulator
 ctest --test-dir _build_ipad_simulator -C Release --output-on-failure
 xcrun simctl install YOUR_IPAD_UDID _build_ipad_simulator/Release/EmptyEpsilon.app
-xcrun simctl launch YOUR_IPAD_UDID io.github.daid.EmptyEpsilon
+xcrun simctl launch YOUR_IPAD_UDID sh.mgp.emptyepsilon
 ```
 
 Use `appletv-simulator` for tvOS. Its output directory is
@@ -66,12 +66,62 @@ See [Apple's local network privacy guidance](https://developer.apple.com/documen
 
 Preferences are stored using `SDL_GetPrefPath` and saved when the app backgrounds.
 Voice recording and desktop serial hardware are disabled on these targets.
-App Store icons, distribution provisioning, and store submission are outside this
-first build iteration.
+Xcode builds generate iPad icons and Apple TV layered icons/top-shelf images from
+the existing logo artwork. Other CMake generators do not package these icons.
+The privacy manifest declares file metadata access within the app container and
+elapsed-time measurements used by SDL and the game.
+
+## TestFlight
+
+The **TestFlight** GitHub Actions workflow manually archives both device apps,
+checks their contents, then signs and uploads them with `xcodebuild -exportArchive`.
+It uses Apple's cloud-managed distribution certificates; no certificate or
+provisioning-profile files need to be stored in GitHub.
+
+One-time setup:
+
+1. Register a bundle ID in your paid Apple Developer team and create its App Store
+   Connect app with both **iOS** and **tvOS** platforms. This workflow uses the same
+   bundle ID for both platforms. Accept any outstanding Apple agreements.
+2. Create an App Store Connect **team API key** with the App Manager role and
+   access to Certificates, Identifiers & Profiles. Have the Account Holder or an
+   Admin grant **Access to Cloud Managed Distribution Certificate** as well.
+   That permission is separate from the role; without it automatic signing fails.
+3. Under the repository's **Settings → Secrets and variables → Actions**, set:
+
+   | Kind | Name | Value |
+   | --- | --- | --- |
+   | Variable | `APPLE_TEAM_ID` | `H8563U643B` |
+   | Variable | `APPLE_BUNDLE_ID` | `sh.mgp.emptyepsilon` |
+   | Secret | `APP_STORE_CONNECT_KEY_ID` | The API key ID |
+   | Secret | `APP_STORE_CONNECT_ISSUER_ID` | The team key's issuer ID |
+   | Secret | `APP_STORE_CONNECT_PRIVATE_KEY` | The complete `.p8` file contents, including its header and footer |
+
+Run **Actions → TestFlight → Run workflow**, entering the version used by your
+desktop server, such as `2026.10.11`. The workflow assigns a distinct Apple build
+number from the run number and retry attempt (`1.1`, `1.2`, `2.1`, …), leaving the
+game's network version unchanged. For local builds, override this number with
+`-DEE_APPLE_BUILD_NUMBER=1.1`.
+
+After Apple finishes processing, the builds appear under the app's TestFlight
+tab. Select tester groups there; external testing may require Apple's beta review.
+The workflow does not configure tester groups or submit an App Store release.
+Each platform retains its unsigned archive, crash symbols, build/upload logs,
+and any exported IPA for seven days in the workflow artifacts. The API key is
+written only to a temporary file during upload and removed when that step exits.
+
+If signing fails with a cloud-signing or missing-profile error, check the separate
+cloud-certificate permission first. An upload is not verified until a run succeeds
+with your team's credentials and Apple processes the resulting build.
+
+See Apple's [cloud-managed certificates](https://developer.apple.com/help/account/certificates/cloud-managed-certificates/)
+and [uploading builds](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/).
 
 ## Verification and known issues
 
 Unsigned iPad and Apple TV device builds and their bundle checks pass with Xcode 27.
+Device archives also pass checks for app icons, privacy manifests, game assets,
+and matching crash-symbol UUIDs. Signing and TestFlight upload await API credentials.
 The iPad simulator joins a desktop server, selects a ship and main screen, accepts
 text input, and resumes after backgrounding with preferences saved. The existing
 macOS camera test also passes.
