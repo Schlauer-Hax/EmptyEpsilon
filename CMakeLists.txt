@@ -1,7 +1,7 @@
 # Set minimum target macOS version: https://cmake.org/cmake/help/v3.8/variable/CMAKE_OSX_DEPLOYMENT_TARGET.html#variable:CMAKE_OSX_DEPLOYMENT_TARGET
 # SDL2 targets 10.5, however EE targets C++17 features only available in 10.15+ (Catalina, June 2019).
 # Must be first!
-if(APPLE)
+if(APPLE AND NOT CMAKE_SYSTEM_NAME MATCHES "^(iOS|tvOS)$")
   if(NOT DEFINED ENV{MACOSX_DEPLOYMENT_TARGET})
     set(ENV{MACOSX_DEPLOYMENT_TARGET} "10.15")
   endif()
@@ -38,6 +38,11 @@ endif()
 
 project(EmptyEpsilon LANGUAGES CXX C  VERSION ${MAJOR}.${MINOR}.${PATCH})
 
+set(EE_APPLE_MOBILE OFF)
+if(CMAKE_SYSTEM_NAME MATCHES "^(iOS|tvOS)$")
+    set(EE_APPLE_MOBILE ON)
+endif()
+
 include(GNUInstallDirs)
 
 # Defaults
@@ -65,6 +70,9 @@ endif()
 # Dependencies
 
 # SeriousProton
+if(EE_APPLE_MOBILE)
+    include(cmake/AppleMobileDependencies.cmake)
+endif()
 add_subdirectory("${SERIOUS_PROTON_DIR}" "${PROJECT_BINARY_DIR}/SeriousProton" EXCLUDE_FROM_ALL)
 
 set(EXTERNALS_DIR "${PROJECT_BINARY_DIR}/externals")
@@ -680,7 +688,7 @@ target_link_libraries(EE_GuiLIB PUBLIC seriousproton meshoptimizer)
 target_include_directories(EE_GuiLIB PUBLIC "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src;${CMAKE_CURRENT_BINARY_DIR}/include>")
 
 include(CTest)
-if(BUILD_TESTING AND NOT ANDROID)
+if(BUILD_TESTING AND NOT ANDROID AND NOT EE_APPLE_MOBILE)
     add_executable(camera_state_test tests/cameraState.cpp)
     target_include_directories(camera_state_test PRIVATE src)
     target_link_libraries(camera_state_test PRIVATE glm::glm)
@@ -726,6 +734,12 @@ set_target_properties(${PROJECT_NAME}
     PROPERTIES
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/osx/MacOSXBundleInfo.plist.in
         MACOSX_BUNDLE_ICON_FILE "${PROJECT_NAME}.icns")
+
+if(EE_APPLE_MOBILE)
+    include(cmake/AppleMobileBundle.cmake)
+    # Mobile bundles include their resources at build time and are packaged by Xcode.
+    return()
+endif()
 
 include(InstallRequiredSystemLibraries)
 

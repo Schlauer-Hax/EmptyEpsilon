@@ -18,6 +18,14 @@ string initConfiguration(int argc, char** argv)
         configuration_path = string(getenv("EE_CONF_DIR"));
     else if (getenv("HOME"))
         configuration_path = string(getenv("HOME")) + "/.emptyepsilon";
+#ifdef EE_APPLE_MOBILE
+    char* preference_path = SDL_GetPrefPath("EmptyEpsilon", "EmptyEpsilon");
+    if (preference_path)
+    {
+        configuration_path = preference_path;
+        SDL_free(preference_path);
+    }
+#endif
 #ifdef STEAMSDK
     {
         char path_buffer[1024];
@@ -27,6 +35,11 @@ string initConfiguration(int argc, char** argv)
 #endif
     LOG(Info, "Using ", configuration_path, " as configuration path");
     PreferencesManager::load(configuration_path + "/options.ini");
+#ifdef EE_APPLE_MOBILE
+    PreferencesManager::setTemporary("touchscreen", "1");
+    PreferencesManager::setTemporary("multimonitor", "0");
+    PreferencesManager::setTemporary("fullscreen", "1");
+#endif
 
     for(int n=1; n<argc; n++)
     {

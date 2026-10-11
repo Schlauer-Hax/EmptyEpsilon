@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+    <key>CFBundleSupportedPlatforms</key><array><string>${EE_APPLE_PLATFORM}</string></array>
+    <key>MinimumOSVersion</key><string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
+    <key>CFBundleExecutable</key><string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
+    <key>CFBundleIdentifier</key><string>${MACOSX_BUNDLE_GUI_IDENTIFIER}</string>
+    <key>CFBundleName</key><string>Empty Epsilon</string>
+    <key>CFBundleDisplayName</key><string>Empty Epsilon</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
+    <key>CFBundleVersion</key><string>${MACOSX_BUNDLE_BUNDLE_VERSION}</string>
+    <key>UIDeviceFamily</key><array><integer>${EE_APPLE_DEVICE_FAMILY}</integer></array>
+    <key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
+    <key>UISupportedInterfaceOrientations</key><array>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>UIRequiresFullScreen</key><true/>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key><false/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array><dict>
+                <key>UISceneConfigurationName</key><string>Empty Epsilon</string>
+                <key>UISceneDelegateClassName</key><string>EEWindowSceneDelegate</string>
+            </dict></array>
+        </dict>
+    </dict>
+    <key>UILaunchScreen</key><dict/>
+    <key>UIStatusBarHidden</key><true/>
+    <key>UIViewControllerBasedStatusBarAppearance</key><false/>
+    <key>UIApplicationSupportsIndirectInputEvents</key><true/>
+    <key>NSLocalNetworkUsageDescription</key><string>Connect to your Empty Epsilon bridge server on the local network.</string>
+    <key>ITSAppUsesNonExemptEncryption</key><false/>
+</dict>
+</plist>

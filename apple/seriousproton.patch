@@ -1,0 +1,279 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -28,7 +28,9 @@
+ include("cmake/DrMingw.cmake")
+ 
+ #--------------------------------Dependencies----------------------------------
+-find_package(SDL2 REQUIRED)
++if(NOT TARGET SDL2::SDL2)
++    find_package(SDL2 REQUIRED)
++endif()
+ if(NOT DEFINED SDL2_LIBRARIES)
+     set(SDL2_LIBRARIES SDL2::SDL2 SDL2::SDL2main)
+ endif()
+@@ -387,6 +389,9 @@
+ ## Object list
+ if (SHARED_SP)
+ 	add_library(seriousproton_objects SHARED ${source_files})
++elseif(EE_APPLE_MOBILE)
++    # Xcode hashes duplicate object basenames, breaking TARGET_OBJECTS paths.
++    add_library(seriousproton_objects STATIC ${source_files})
+ else()
+ 	add_library(seriousproton_objects OBJECT ${source_files})
+ endif()
+@@ -408,7 +413,11 @@
+ add_library(seriousproton INTERFACE)
+ 
+ # Expose sources to consumer (necessary for LTO on some compilers, mingw)
+-set_target_properties(seriousproton PROPERTIES INTERFACE_SOURCES $<TARGET_OBJECTS:seriousproton_objects>)
++if(EE_APPLE_MOBILE)
++    target_link_libraries(seriousproton INTERFACE "$<LINK_LIBRARY:WHOLE_ARCHIVE,seriousproton_objects>")
++else()
++    set_target_properties(seriousproton PROPERTIES INTERFACE_SOURCES $<TARGET_OBJECTS:seriousproton_objects>)
++endif()
+ 
+ # Forward SP settings to consumer.
+ target_link_libraries(seriousproton INTERFACE $<BUILD_INTERFACE:seriousproton_deps>)
+--- a/src/engine.cpp
++++ b/src/engine.cpp
+@@ -11,13 +11,31 @@
+ 
+ #include <thread>
+ #include <SDL.h>
++#ifdef EE_APPLE_MOBILE
++#include "graphics/opengl.h"
++#include <atomic>
++
++static std::atomic<bool> application_suspended{false};
++
++static int mobileLifecycle(void*, SDL_Event* event)
++{
++    if (event->type == SDL_APP_WILLENTERBACKGROUND)
++    {
++        application_suspended = true;
++        if (glad_glFinish) glFinish();
++    }
++    else if (event->type == SDL_APP_DIDENTERFOREGROUND)
++        application_suspended = false;
++    return 1;
++}
++#endif
+ 
+ #ifdef STEAMSDK
+ #include "steam/steam_api.h"
+ #include "steam/steam_api_flat.h"
+ #endif
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(EE_APPLE_MOBILE)
+ #include <CoreFoundation/CoreFoundation.h>
+ #include <mach-o/dyld.h>
+ #include <libgen.h>
+@@ -35,7 +53,7 @@
+ {
+     engine = this;
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(EE_APPLE_MOBILE)
+     // TODO: Find a proper solution.
+     // Seems to be non-NULL even outside of a proper bundle.
+     CFBundleRef bundle = CFBundleGetMainBundle();
+@@ -126,6 +144,9 @@
+     SDL_ShowCursor(false);
+     SDL_StopTextInput();
+ 
++#ifdef EE_APPLE_MOBILE
++    SDL_AddEventWatch(mobileLifecycle, nullptr);
++#endif
+     atexit(SDL_Quit);
+ 
+     initRandom();
+@@ -137,6 +158,9 @@
+ 
+ Engine::~Engine()
+ {
++#ifdef EE_APPLE_MOBILE
++    SDL_DelEventWatch(mobileLifecycle, nullptr);
++#endif
+     Window::all_windows.clear();
+     updatableList.clear();
+     delete soundManager;
+@@ -208,8 +232,20 @@
+         sp::SystemTimer debug_output_timer;
+         debug_output_timer.repeat(5);
+ #endif
++#ifdef EE_APPLE_MOBILE
++        // UIKit must own the outer run loop so scene transitions and keyboards finish.
++        frame_callback = [this, frame_timer
++#ifdef DEBUG
++                          , debug_output_timer
++#endif
++                         ]() mutable
++#else
+         while(running)
+-        {
++#endif
++        {
++#ifdef EE_APPLE_MOBILE
++            if (!running) return;
++#endif
+             // Handle events
+             SDL_Event event;
+             while (SDL_PollEvent(&event))
+@@ -222,6 +258,14 @@
+                 LOG(DEBUG) << "Object count: " << DEBUG_PobjCount << " " << updatableList.size();
+ #endif
+ 
++#ifdef EE_APPLE_MOBILE
++            // UIKit may suspend us inside event processing; never render in background.
++            if (application_suspended)
++            {
++                frame_timer.restart();
++                return;
++            }
++#endif
+             float delta = frame_timer.restart();
+             if (delta > 0.5f)
+                 delta = 0.5f;
+@@ -264,8 +308,14 @@
+ 
+             sp::io::Keybinding::allPostUpdate();
+         }
++#ifdef EE_APPLE_MOBILE
++        ;
++        SDL_iPhoneSetAnimationCallback(static_cast<SDL_Window*>(Window::all_windows[0]->window), 1,
++            [](void* context) { static_cast<Engine*>(context)->frame_callback(); }, this);
++#else
+         soundManager->stopMusic();
+         sp::audio::Source::stopAudioSystem();
++#endif
+     }
+ }
+ 
+--- a/src/engine.h
++++ b/src/engine.h
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include <unordered_map>
++#include <functional>
+ #include "stringImproved.h"
+ #include "ecs/system.h"
+ #include "P.h"
+@@ -21,6 +22,9 @@
+ 
+ private:
+     bool running;
++#ifdef EE_APPLE_MOBILE
++    std::function<void()> frame_callback;
++#endif
+ 
+     std::unordered_map<string, P<PObject> > objectMap;
+     float elapsedTime;
+--- a/src/windowManager.cpp
++++ b/src/windowManager.cpp
+@@ -18,6 +18,9 @@
+ #include <glm/gtc/type_ptr.hpp>
+ #include <cmath>
+ #include <SDL.h>
++#ifdef EE_APPLE_MOBILE
++#include <SDL_syswm.h>
++#endif
+ #include <stdlib.h>
+ 
+ sp::io::Keybinding fullscreen_key{"FULLSCREEN"};
+@@ -85,6 +88,16 @@
+         setMode(getMode() == Mode::Window ? Mode::Fullscreen : Mode::Window);
+ 
+     SDL_GL_MakeCurrent(static_cast<SDL_Window*>(window), gl_context);
++#ifdef EE_APPLE_MOBILE
++    // UIKit owns the onscreen framebuffer; it is not framebuffer zero.
++    SDL_SysWMinfo info{};
++    SDL_VERSION(&info.version);
++    if (SDL_GetWindowWMInfo(static_cast<SDL_Window*>(window), &info))
++    {
++        glBindFramebuffer(GL_FRAMEBUFFER, info.info.uikit.framebuffer);
++        glBindRenderbuffer(GL_RENDERBUFFER, info.info.uikit.colorbuffer);
++    }
++#endif
+ 
+     int w, h;
+     SDL_GL_GetDrawableSize(static_cast<SDL_Window*>(window), &w, &h);
+@@ -219,7 +232,7 @@
+     // Create the window of the application
+     auto size = calculateWindowSize();
+ 
+-#if defined(ANDROID)
++#if defined(ANDROID) || defined(EE_APPLE_MOBILE)
+     auto context_profile_mask = SDL_GL_CONTEXT_PROFILE_ES;
+     auto context_profile_minor_version = getFromEnvironment("SP_GL_MINOR", "0").toInt();
+ #elif defined(__APPLE__)
+--- a/src/graphics/renderTexture.cpp
++++ b/src/graphics/renderTexture.cpp
+@@ -30,12 +30,18 @@
+         glGenRenderbuffers(1, &depth_buffer);
+     }
+ 
++    GLint previous_framebuffer, previous_renderbuffer;
++    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous_framebuffer);
++    glGetIntegerv(GL_RENDERBUFFER_BINDING, &previous_renderbuffer);
+     glBindFramebuffer(GL_FRAMEBUFFER, frame_buffer);
+ 
+     glBindTexture(GL_TEXTURE_2D, color_buffer);
+     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, size.x, size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, smooth ? GL_LINEAR : GL_NEAREST);
+     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, smooth ? GL_LINEAR : GL_NEAREST);
++    // GLES2 requires clamping for screen-sized textures that are not powers of two.
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_buffer, 0);
+ 
+     glBindRenderbuffer(GL_RENDERBUFFER, depth_buffer);
+@@ -58,8 +64,8 @@
+         frame_buffer = color_buffer = depth_buffer = 0;
+     }
+ 
+-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+-    glBindRenderbuffer(GL_RENDERBUFFER, 0);
++    glBindFramebuffer(GL_FRAMEBUFFER, previous_framebuffer);
++    glBindRenderbuffer(GL_RENDERBUFFER, previous_renderbuffer);
+     glBindTexture(GL_TEXTURE_2D, 0);
+     return result;
+ }
+--- a/libs/freetype2/src/gzip/ftzconf.h
++++ b/libs/freetype2/src/gzip/ftzconf.h
+@@ -215,7 +215,7 @@
+ #   define FAR
+ #endif
+ 
+-#if !defined(MACOS) && !defined(TARGET_OS_MAC)
++#if !defined(MACOS) && (!defined(TARGET_OS_MAC) || defined(EE_APPLE_MOBILE))
+ typedef unsigned char  Byte;  /* 8 bits */
+ #endif
+ typedef unsigned int   uInt;  /* 16 bits or more */
+--- a/src/graphics/renderTarget.cpp
++++ b/src/graphics/renderTarget.cpp
+@@ -1248,6 +1248,11 @@
+ 
+         glDrawElements(mode, static_cast<GLsizei>(index.size()), GL_UNSIGNED_SHORT, nullptr);
+ 
++        // Later 3D draws can index beyond this 2D buffer.
++        glDisableVertexAttribArray(shader->getAttributeLocation("a_position"));
++        glDisableVertexAttribArray(shader->getAttributeLocation("a_color"));
++        glDisableVertexAttribArray(shader->getAttributeLocation("a_texcoords"));
++
+         data.clear();
+         index.clear();
+     }
+--- a/src/postProcessManager.cpp
++++ b/src/postProcessManager.cpp
+@@ -75,6 +75,9 @@
+ 
+     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, nullptr);
+ 
++    glDisableVertexAttribArray(shader->getAttributeLocation("a_position"));
++    glDisableVertexAttribArray(shader->getAttributeLocation("a_texcoords"));
++
+     glBindBuffer(GL_ARRAY_BUFFER, GL_NONE);
+     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, GL_NONE);
+ }

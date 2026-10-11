@@ -132,6 +132,10 @@ void GuiTextEntry::onDraw(sp::RenderTarget& renderer)
 
 bool GuiTextEntry::onMouseDown(sp::io::Pointer::Button button, glm::vec2 position, sp::io::Pointer::ID id)
 {
+#ifdef EE_APPLE_MOBILE
+    if (focus && !readonly)
+        SDL_StartTextInput();
+#endif
     selection_start = getTextOffsetForPosition(position);
     selection_end = selection_start;
     return true;

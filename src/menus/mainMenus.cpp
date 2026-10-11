@@ -54,9 +54,11 @@ MainMenu::MainMenu()
         destroy();
     }))->setPosition({50, -110}, sp::Alignment::BottomLeft)->setSize(300, 50);
 
+#ifndef EE_APPLE_MOBILE
     (new GuiButton(this, "QUIT", tr("mainMenu", "Quit"), []() {
         engine->shutdown();
     }))->setPosition({50, -50}, sp::Alignment::BottomLeft)->setSize(300, 50);
+#endif
 
     (new GuiButton(this, "START_TUTORIAL", tr("mainMenu", "Tutorials"), [this]() {
         new TutorialMenu();

@@ -43,6 +43,9 @@
 
 #include "shaderRegistry.h"
 #include "glObjects.h"
+#ifdef EE_APPLE_MOBILE
+#include "mobile.h"
+#endif
 
 glm::vec3 camera_position;
 float camera_yaw;
@@ -102,10 +105,17 @@ int main(int argc, char** argv)
 #endif
 
     LOG(Info, "Starting...");
+#ifdef EE_TVOS
+    SDL_SetHint(SDL_HINT_TV_REMOTE_AS_JOYSTICK, "0");
+    SDL_SetHint(SDL_HINT_APPLE_TV_CONTROLLER_UI_EVENTS, "0");
+#endif
     new Engine();
     initSystemsAndComponents();
 
     auto configuration_path = initConfiguration(argc, argv);
+#ifdef EE_APPLE_MOBILE
+    initAppleMobile(configuration_path);
+#endif
 
     if (PreferencesManager::get("headless") == "")
     {
@@ -203,7 +213,7 @@ int main(int argc, char** argv)
     // On Android, this requires the 'record audio' permissions,
     // which is always a scary thing for users.
     // Since there is no way to access it (yet) via a touchscreen, compile out.
-#if !defined(ANDROID)
+#if !defined(ANDROID) && !defined(EE_APPLE_MOBILE)
     // Set up voice chat and key bindings.
     if (PreferencesManager::get("voice_chat_enabled", "0") == "1")
     {
@@ -275,6 +285,11 @@ int main(int argc, char** argv)
     }
 
     engine->runMainLoop();
+
+#ifdef EE_APPLE_MOBILE
+    // SDL's animation callback continues running under UIKit after SDL_main returns.
+    return 0;
+#endif
 
     // Set FSAA and fullscreen defaults from windowManager.
     if (windows.size() > 0)

@@ -11,7 +11,7 @@ private:
 #ifdef _WIN32
     void* handle;
 #endif
-#if defined(__gnu_linux__) || (defined(__APPLE__) && defined(__MACH__))
+#if defined(__gnu_linux__) || (defined(__APPLE__) && defined(__MACH__) && !defined(EE_APPLE_MOBILE))
     int handle;
 #endif
 

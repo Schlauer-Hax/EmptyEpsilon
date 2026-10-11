@@ -68,6 +68,8 @@ EmptyEpsilon settings are stored in an `options.ini` file located in either the 
 
 ### Build from source
 
+Experimental iPad and Apple TV build instructions are in [apple/README.md](apple/README.md).
+
 See this repository's wiki for guidance on [building EmptyEpsilon from source](https://github.com/daid/EmptyEpsilon/wiki/Build). Several Build subpages on the wiki provide steps for building on specific operating systems, distributions, or hardware.
 
 ## Community

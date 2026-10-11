@@ -1,0 +1,155 @@
+--- a/src/video/uikit/SDL_uikitappdelegate.h
++++ b/src/video/uikit/SDL_uikitappdelegate.h
+@@ -41,6 +41,8 @@
+  * several major third-party ad APIs (e.g. Google admob) incorrectly assume this
+  * property always exists, and will crash if it doesn't. */
+ @property (nonatomic) UIWindow *window;
++@property (nonatomic, strong) UIWindowScene *windowScene;
++- (void)postFinishLaunch;
+ 
+ @end
+ 
+--- a/src/video/uikit/SDL_uikitappdelegate.m
++++ b/src/video/uikit/SDL_uikitappdelegate.m
+@@ -349,6 +349,25 @@
+ 
+ @end
+ 
++/* Empty Epsilon's single-window UIScene adapter for iOS/tvOS 15+. */
++@interface EEWindowSceneDelegate : NSObject <UIWindowSceneDelegate>
++@end
++
++@implementation EEWindowSceneDelegate
++- (void)sceneDidBecomeActive:(UIScene *)scene { SDL_OnApplicationDidBecomeActive(); }
++- (void)sceneWillResignActive:(UIScene *)scene { SDL_OnApplicationWillResignActive(); }
++- (void)sceneDidEnterBackground:(UIScene *)scene { SDL_OnApplicationDidEnterBackground(); }
++- (void)sceneWillEnterForeground:(UIScene *)scene { SDL_OnApplicationWillEnterForeground(); }
++- (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options
++{
++    SDLUIKitDelegate *delegate = [SDLUIKitDelegate sharedAppDelegate];
++    if (!delegate.windowScene && [scene isKindOfClass:[UIWindowScene class]]) {
++        delegate.windowScene = (UIWindowScene *)scene;
++        [delegate performSelector:@selector(postFinishLaunch) withObject:nil afterDelay:0.0];
++    }
++}
++@end
++
+ @implementation SDLUIKitDelegate {
+     UIWindow *launchWindow;
+ }
+@@ -470,7 +489,7 @@
+                         SDL_IdleTimerDisabledChanged, NULL);
+ 
+     SDL_SetMainReady();
+-    [self performSelector:@selector(postFinishLaunch) withObject:nil afterDelay:0.0];
++    /* Empty Epsilon: start SDL_main after the application scene is connected. */
+ 
+     return YES;
+ }
+--- a/src/video/uikit/SDL_uikitwindow.m
++++ b/src/video/uikit/SDL_uikitwindow.m
+@@ -207,7 +207,8 @@
+ 
+         /* ignore the size user requested, and make a fullscreen window */
+         /* !!! FIXME: can we have a smaller view? */
+-        uiwindow = [[SDL_uikitwindow alloc] initWithFrame:data.uiscreen.bounds];
++        uiwindow = [[SDL_uikitwindow alloc] initWithWindowScene:[(SDLUIKitDelegate *)[SDLUIKitDelegate sharedAppDelegate] windowScene]];
++        uiwindow.frame = uiwindow.windowScene.coordinateSpace.bounds;
+ 
+         /* put the window on an external display if appropriate. */
+         if (data.uiscreen != [UIScreen mainScreen]) {
+@@ -237,6 +238,16 @@
+         SDL_DisplayData *displaydata;
+         SDL_WindowData *data = (__bridge SDL_WindowData *) window->driverdata;
+         [data.uiwindow makeKeyAndVisible];
++#if !TARGET_OS_TV
++        if (@available(iOS 16.0, *)) {
++            [data.viewcontroller setNeedsUpdateOfSupportedInterfaceOrientations];
++            UIWindowSceneGeometryPreferencesIOS *geometry = [[UIWindowSceneGeometryPreferencesIOS alloc]
++                initWithInterfaceOrientations:UIKit_GetSupportedOrientations(window)];
++            [data.uiwindow.windowScene requestGeometryUpdateWithPreferences:geometry errorHandler:^(NSError *error) {
++                SDL_Log("Could not set scene orientation: %s", error.localizedDescription.UTF8String);
++            }];
++        }
++#endif
+ 
+         /* Make this window the current mouse focus for touch input */
+         display = SDL_GetDisplayForWindow(window);
+--- a/src/video/uikit/SDL_uikitevents.m
++++ b/src/video/uikit/SDL_uikitevents.m
+@@ -53,10 +53,6 @@
+     NSNotificationCenter *notificationCenter = NSNotificationCenter.defaultCenter;
+     if (UIKit_EventPumpEnabled && !self.isObservingNotifications) {
+         self.isObservingNotifications = YES;
+-        [notificationCenter addObserver:self selector:@selector(applicationDidBecomeActive) name:UIApplicationDidBecomeActiveNotification object:nil];
+-        [notificationCenter addObserver:self selector:@selector(applicationWillResignActive) name:UIApplicationWillResignActiveNotification object:nil];
+-        [notificationCenter addObserver:self selector:@selector(applicationDidEnterBackground) name:UIApplicationDidEnterBackgroundNotification object:nil];
+-        [notificationCenter addObserver:self selector:@selector(applicationWillEnterForeground) name:UIApplicationWillEnterForegroundNotification object:nil];
+         [notificationCenter addObserver:self selector:@selector(applicationWillTerminate) name:UIApplicationWillTerminateNotification object:nil];
+         [notificationCenter addObserver:self selector:@selector(applicationDidReceiveMemoryWarning) name:UIApplicationDidReceiveMemoryWarningNotification object:nil];
+ #if !TARGET_OS_TV
+--- a/src/video/uikit/SDL_uikitvideo.m
++++ b/src/video/uikit/SDL_uikitvideo.m
+@@ -220,7 +220,7 @@
+      * https://bugzilla.libsdl.org/show_bug.cgi?id=3505
+      * https://bugzilla.libsdl.org/show_bug.cgi?id=3465
+      * https://forums.developer.apple.com/thread/65337 */
+-    orient = [UIApplication sharedApplication].statusBarOrientation;
++    orient = data.uiwindow.windowScene.interfaceOrientation;
+     landscape = UIInterfaceOrientationIsLandscape(orient) ||
+                     !(UIKit_GetSupportedOrientations(window) & (UIInterfaceOrientationMaskPortrait | UIInterfaceOrientationMaskPortraitUpsideDown));
+     fullscreen = CGRectEqualToRect(screen.bounds, frame);
+--- a/src/video/uikit/SDL_uikitmodes.m
++++ b/src/video/uikit/SDL_uikitmodes.m
+@@ -24,6 +24,7 @@
+ 
+ #include "SDL_system.h"
+ #include "SDL_uikitmodes.h"
++#import "SDL_uikitappdelegate.h"
+ 
+ #include "../../events/SDL_events_c.h"
+ 
+@@ -355,7 +356,7 @@
+ {
+ #if !TARGET_OS_TV
+     if (uiscreen == [UIScreen mainScreen]) {
+-        return UIInterfaceOrientationIsLandscape([UIApplication sharedApplication].statusBarOrientation);
++        return UIInterfaceOrientationIsLandscape([(SDLUIKitDelegate *)[SDLUIKitDelegate sharedAppDelegate] windowScene].interfaceOrientation);
+     } else
+ #endif /* !TARGET_OS_TV */
+     {
+@@ -525,7 +526,7 @@
+ #if !TARGET_OS_TV
+ void SDL_OnApplicationDidChangeStatusBarOrientation(void)
+ {
+-    BOOL isLandscape = UIInterfaceOrientationIsLandscape([UIApplication sharedApplication].statusBarOrientation);
++    BOOL isLandscape = UIInterfaceOrientationIsLandscape([(SDLUIKitDelegate *)[SDLUIKitDelegate sharedAppDelegate] windowScene].interfaceOrientation);
+     SDL_VideoDisplay *display = SDL_GetDisplay(0);
+ 
+     if (display) {
+@@ -550,7 +551,7 @@
+             currentmode->h = height;
+         }
+ 
+-        switch ([UIApplication sharedApplication].statusBarOrientation) {
++        switch ([(SDLUIKitDelegate *)[SDLUIKitDelegate sharedAppDelegate] windowScene].interfaceOrientation) {
+         case UIInterfaceOrientationPortrait:
+             orientation = SDL_ORIENTATION_PORTRAIT;
+             break;
+--- a/src/video/uikit/SDL_uikitviewcontroller.m
++++ b/src/video/uikit/SDL_uikitviewcontroller.m
+@@ -573,6 +573,14 @@
+     return YES;
+ }
+ 
++#if TARGET_OS_TV
++/* tvOS dismisses its editor without iOS keyboard-hide notifications. */
++- (void)textFieldDidEndEditing:(UITextField *)_textField
++{
++    keyboardVisible = NO;
++}
++#endif
++
+ /* Terminates the editing session */
+ - (BOOL)textFieldShouldReturn:(UITextField*)_textField
+ {
