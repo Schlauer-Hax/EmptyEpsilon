@@ -1,4 +1,4 @@
-# iPad and Apple TV use target-built libraries, never Homebrew's macOS binaries.
+# Store builds use target-built libraries, never Homebrew's macOS binaries.
 enable_language(OBJC OBJCXX)
 # Each preset builds one SDK; keep bundle generator expressions usable by scripts.
 set_property(GLOBAL PROPERTY XCODE_EMIT_EFFECTIVE_PLATFORM_NAME OFF)
@@ -16,7 +16,7 @@ set(WITH_GLM bundled CACHE STRING "GLM source" FORCE)
 set(WITH_OPUS bundled CACHE STRING "Opus source" FORCE)
 set(SHARED_SP OFF CACHE BOOL "Build static SeriousProton" FORCE)
 if(STEAMSDK)
-    message(FATAL_ERROR "Steam SDK is not supported on iPad or Apple TV")
+    message(FATAL_ERROR "Steam SDK is not supported in Apple store builds")
 endif()
 set(SDL_SHARED OFF CACHE BOOL "Build shared SDL" FORCE)
 set(SDL_STATIC ON CACHE BOOL "Build static SDL" FORCE)
@@ -31,7 +31,7 @@ FetchContent_Declare(sdl2
 FetchContent_MakeAvailable(sdl2)
 
 # Keep the engine changes reproducible until they can be upstreamed. Desktop builds
-# continue using SERIOUS_PROTON_DIR. This copy is private to the mobile build.
+# continue using SERIOUS_PROTON_DIR. This copy is private to the store build.
 FetchContent_Declare(apple_seriousproton
     URL https://codeload.github.com/daid/SeriousProton/tar.gz/b137f0f287a6378a1284057eb588a5d43f2468e2
     URL_HASH SHA256=97d125f071ab6ce1404ebc9e3a1c37789bd3aea32fd7ed7e63d1342031ae7088
@@ -42,7 +42,11 @@ if(NOT apple_seriousproton_POPULATED)
     FetchContent_Populate(apple_seriousproton)
 endif()
 set(SERIOUS_PROTON_DIR "${apple_seriousproton_SOURCE_DIR}")
-add_compile_definitions(EE_APPLE_MOBILE)
+if(EE_APPLE_MOBILE)
+    add_compile_definitions(EE_APPLE_MOBILE)
+else()
+    add_compile_definitions(EE_APPLE_TESTFLIGHT)
+endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "tvOS")
     add_compile_definitions(EE_TVOS)
 endif()

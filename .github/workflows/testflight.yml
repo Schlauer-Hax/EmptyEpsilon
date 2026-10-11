@@ -1,6 +1,8 @@
 name: TestFlight
 
 on:
+  push:
+    branches: [master]
   workflow_dispatch:
     inputs:
       version:
@@ -23,6 +25,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - target: macos-testflight
+            destination: macOS
+            platform: MacOSX
           - target: ipad
             destination: iOS
             platform: iPhoneOS
@@ -51,10 +56,12 @@ jobs:
               exit 1
             fi
           done
+          APP_VERSION="${APP_VERSION:-$(date -u +%Y.%-m.%-d)}"
           if [[ ! "$APP_VERSION" =~ ^[1-9][0-9]{0,3}\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)$ ]]; then
             echo '::error::Version must contain three numbers, for example 2026.10.11.'
             exit 1
           fi
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
           xcodebuild -version
       - name: Install build tools
         run: brew install cmake
@@ -72,11 +79,16 @@ jobs:
       - name: Archive
         run: |
           set -o pipefail
+          signing=(CODE_SIGNING_ALLOWED=NO)
+          if [[ "$PLATFORM" == MacOSX ]]; then
+            # Preserve sandbox entitlements in an ad-hoc signature for export.
+            signing=(CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER=)
+          fi
           xcodebuild archive -project "_build_$TARGET/EmptyEpsilon.xcodeproj" \
             -scheme EmptyEpsilon -configuration Release \
             -destination "generic/platform=$DESTINATION" \
             -archivePath "$RUNNER_TEMP/EmptyEpsilon.xcarchive" \
-            CODE_SIGNING_ALLOWED=NO -jobs 3 2>&1 | tee "$RUNNER_TEMP/archive.log"
+            "${signing[@]}" -jobs 3 2>&1 | tee "$RUNNER_TEMP/archive.log"
           python3 tests/appleBundle.py \
             "$RUNNER_TEMP/EmptyEpsilon.xcarchive/Products/Applications/EmptyEpsilon.app" "$PLATFORM" Xcode
       - name: Sign and upload to TestFlight
@@ -121,11 +133,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: TestFlight-${{ matrix.target }}-${{ inputs.version }}-${{ github.run_number }}.${{ github.run_attempt }}
+          name: TestFlight-${{ matrix.target }}-${{ env.APP_VERSION }}-${{ github.run_number }}.${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/EmptyEpsilon-*.xcarchive.zip
             ${{ runner.temp }}/archive.log
             ${{ runner.temp }}/upload.log
             ${{ runner.temp }}/TestFlight/*.ipa
+            ${{ runner.temp }}/TestFlight/*.pkg
           if-no-files-found: ignore
           retention-days: 7

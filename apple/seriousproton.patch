@@ -15,7 +15,7 @@
  ## Object list
  if (SHARED_SP)
  	add_library(seriousproton_objects SHARED ${source_files})
-+elseif(EE_APPLE_MOBILE)
++elseif(EE_APPLE_MOBILE OR EE_APPLE_TESTFLIGHT)
 +    # Xcode hashes duplicate object basenames, breaking TARGET_OBJECTS paths.
 +    add_library(seriousproton_objects STATIC ${source_files})
  else()
@@ -26,7 +26,7 @@
  
  # Expose sources to consumer (necessary for LTO on some compilers, mingw)
 -set_target_properties(seriousproton PROPERTIES INTERFACE_SOURCES $<TARGET_OBJECTS:seriousproton_objects>)
-+if(EE_APPLE_MOBILE)
++if(EE_APPLE_MOBILE OR EE_APPLE_TESTFLIGHT)
 +    target_link_libraries(seriousproton INTERFACE "$<LINK_LIBRARY:WHOLE_ARCHIVE,seriousproton_objects>")
 +else()
 +    set_target_properties(seriousproton PROPERTIES INTERFACE_SOURCES $<TARGET_OBJECTS:seriousproton_objects>)
@@ -247,7 +247,7 @@
  #endif
  
 -#if !defined(MACOS) && !defined(TARGET_OS_MAC)
-+#if !defined(MACOS) && (!defined(TARGET_OS_MAC) || defined(EE_APPLE_MOBILE))
++#if !defined(MACOS) && (!defined(TARGET_OS_MAC) || defined(EE_APPLE_MOBILE) || defined(EE_APPLE_TESTFLIGHT))
  typedef unsigned char  Byte;  /* 8 bits */
  #endif
  typedef unsigned int   uInt;  /* 16 bits or more */

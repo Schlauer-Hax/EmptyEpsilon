@@ -14,6 +14,16 @@
       }
     },
     {
+      "name": "macos-testflight",
+      "inherits": "apple-base",
+      "binaryDir": "${sourceDir}/_build_macos-testflight",
+      "cacheVariables": {
+        "CMAKE_OSX_SYSROOT": "macosx",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0",
+        "EE_APPLE_TESTFLIGHT": "ON"
+      }
+    },
+    {
       "name": "ipad",
       "inherits": "apple-base",
       "binaryDir": "${sourceDir}/_build_ipad",
@@ -39,6 +49,7 @@
     }
   ],
   "buildPresets": [
+    { "name": "macos-testflight", "configurePreset": "macos-testflight", "configuration": "Release", "targets": ["EmptyEpsilon"] },
     { "name": "ipad", "configurePreset": "ipad", "configuration": "Release", "targets": ["EmptyEpsilon"] },
     { "name": "ipad-simulator", "configurePreset": "ipad-simulator", "configuration": "Release", "targets": ["EmptyEpsilon"] },
     { "name": "appletv", "configurePreset": "appletv", "configuration": "Release", "targets": ["EmptyEpsilon"] },

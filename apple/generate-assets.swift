@@ -38,7 +38,21 @@ func png(_ path: URL, width: Int, height: Int, artwork: String?, opaque: Bool) t
 }
 
 try contents(catalog, [:])
-if !tv {
+if CommandLine.arguments[3] == "Darwin" {
+    let icon = catalog.appendingPathComponent("AppIcon.appiconset")
+    let images = [16, 32, 128, 256, 512].flatMap { size in
+        [1, 2].map { scale in
+            ["idiom": "mac", "size": "\(size)x\(size)", "scale": "\(scale)x", "filename": "\(size)-\(scale).png"]
+        }
+    }
+    try contents(icon, ["images": images])
+    for size in [16, 32, 128, 256, 512] {
+        for scale in [1, 2] {
+            try png(icon.appendingPathComponent("\(size)-\(scale).png"), width: size * scale,
+                height: size * scale, artwork: "logo_icon.png", opaque: true)
+        }
+    }
+} else if !tv {
     let icon = catalog.appendingPathComponent("AppIcon.appiconset")
     try contents(icon, ["images": [["idiom": "universal", "platform": "ios", "size": "1024x1024", "filename": "icon.png"]]])
     try png(icon.appendingPathComponent("icon.png"), width: 1024, height: 1024, artwork: "logo_icon.png", opaque: true)

@@ -3,7 +3,11 @@
 # Must be first!
 if(APPLE AND NOT CMAKE_SYSTEM_NAME MATCHES "^(iOS|tvOS)$")
   if(NOT DEFINED ENV{MACOSX_DEPLOYMENT_TARGET})
-    set(ENV{MACOSX_DEPLOYMENT_TARGET} "10.15")
+    if(DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+      set(ENV{MACOSX_DEPLOYMENT_TARGET} "${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    else()
+      set(ENV{MACOSX_DEPLOYMENT_TARGET} "10.15")
+    endif()
   endif()
   
   message(STATUS "Mac deployment target is: $ENV{MACOSX_DEPLOYMENT_TARGET}")
@@ -42,6 +46,10 @@ set(EE_APPLE_MOBILE OFF)
 if(CMAKE_SYSTEM_NAME MATCHES "^(iOS|tvOS)$")
     set(EE_APPLE_MOBILE ON)
 endif()
+option(EE_APPLE_TESTFLIGHT "Build a sandboxed macOS app for TestFlight" OFF)
+if(EE_APPLE_TESTFLIGHT AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    message(FATAL_ERROR "EE_APPLE_TESTFLIGHT is for native macOS builds")
+endif()
 
 include(GNUInstallDirs)
 
@@ -70,8 +78,8 @@ endif()
 # Dependencies
 
 # SeriousProton
-if(EE_APPLE_MOBILE)
-    include(cmake/AppleMobileDependencies.cmake)
+if(EE_APPLE_MOBILE OR EE_APPLE_TESTFLIGHT)
+    include(cmake/AppleDependencies.cmake)
 endif()
 add_subdirectory("${SERIOUS_PROTON_DIR}" "${PROJECT_BINARY_DIR}/SeriousProton" EXCLUDE_FROM_ALL)
 
@@ -743,9 +751,9 @@ set_target_properties(${PROJECT_NAME}
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/osx/MacOSXBundleInfo.plist.in
         MACOSX_BUNDLE_ICON_FILE "${PROJECT_NAME}.icns")
 
-if(EE_APPLE_MOBILE)
-    include(cmake/AppleMobileBundle.cmake)
-    # Mobile bundles include their resources at build time and are packaged by Xcode.
+if(EE_APPLE_MOBILE OR EE_APPLE_TESTFLIGHT)
+    include(cmake/AppleBundle.cmake)
+    # Store bundles include their resources at build time and are packaged by Xcode.
     return()
 endif()
 

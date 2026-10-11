@@ -1,4 +1,4 @@
-# iPad and Apple TV builds
+# Apple builds and TestFlight
 
 These experimental ports use the existing Empty Epsilon menus and station screens.
 On Apple TV, connect to a server and select its main screen. Text fields use SDL's
@@ -7,6 +7,8 @@ system keyboard when focused. Remote-specific navigation is not implemented.
 Requirements: macOS, Xcode with the iOS/tvOS SDKs, CMake 3.24+, Git, and Python 3.
 Simulator presets target Apple Silicon Macs. The deployment target is iOS/tvOS 15.
 Dependencies are built from source; no Homebrew SDL or FreeType libraries are linked.
+The `macos-testflight` preset builds the native desktop app for Apple Silicon and
+macOS 12+, with App Sandbox enabled for distribution through TestFlight.
 
 ## Build
 
@@ -73,7 +75,8 @@ elapsed-time measurements used by SDL and the game.
 
 ## TestFlight
 
-The **TestFlight** GitHub Actions workflow manually archives both device apps,
+The **TestFlight** GitHub Actions workflow runs on every push to `master` and can
+also be started manually. It archives the native macOS, iPad, and Apple TV apps,
 checks their contents, then signs and uploads them with `xcodebuild -exportArchive`.
 It uses Apple's cloud-managed distribution certificates; no certificate or
 provisioning-profile files need to be stored in GitHub.
@@ -81,8 +84,8 @@ provisioning-profile files need to be stored in GitHub.
 One-time setup:
 
 1. Register a bundle ID in your paid Apple Developer team and create its App Store
-   Connect app with both **iOS** and **tvOS** platforms. This workflow uses the same
-   bundle ID for both platforms. Accept any outstanding Apple agreements.
+   Connect app with **macOS**, **iOS**, and **tvOS** platforms. This workflow uses the
+   same bundle ID for all three platforms. Accept any outstanding Apple agreements.
 2. Create an App Store Connect **team API key** with the App Manager role and
    access to Certificates, Identifiers & Profiles. Have the Account Holder or an
    Admin grant **Access to Cloud Managed Distribution Certificate** as well.
@@ -97,8 +100,10 @@ One-time setup:
    | Secret | `APP_STORE_CONNECT_ISSUER_ID` | The team key's issuer ID |
    | Secret | `APP_STORE_CONNECT_PRIVATE_KEY` | The complete `.p8` file contents, including its header and footer |
 
-Run **Actions → TestFlight → Run workflow**, entering the version used by your
-desktop server, such as `2026.10.11`. The workflow assigns a distinct Apple build
+Push builds use the UTC build date as the game version, matching the desktop CI.
+For a specific server version, run **Actions → TestFlight → Run workflow** and enter
+that version, such as `2026.10.11`. Commits marked `[skip ci]` do not start push builds.
+The workflow assigns a distinct Apple build
 number from the run number and retry attempt (`1.1`, `1.2`, `2.1`, …), leaving the
 game's network version unchanged. For local builds, override this number with
 `-DEE_APPLE_BUILD_NUMBER=1.1`.
@@ -106,8 +111,10 @@ game's network version unchanged. For local builds, override this number with
 After Apple finishes processing, the builds appear under the app's TestFlight
 tab. Select tester groups there; external testing may require Apple's beta review.
 The workflow does not configure tester groups or submit an App Store release.
-Each platform retains its unsigned archive, crash symbols, build/upload logs,
-and any exported IPA for seven days in the workflow artifacts. The API key is
+Each platform retains its archive, crash symbols, build/upload logs,
+and any exported IPA or PKG for seven days in the workflow artifacts. Mac archives
+use ad-hoc signing to preserve sandbox entitlements before distribution signing.
+The API key is
 written only to a temporary file during upload and removed when that step exits.
 
 If signing fails with a cloud-signing or missing-profile error, check the separate
@@ -117,11 +124,35 @@ with your team's credentials and Apple processes the resulting build.
 See Apple's [cloud-managed certificates](https://developer.apple.com/help/account/certificates/cloud-managed-certificates/)
 and [uploading builds](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/).
 
+### Native macOS
+
+```sh
+cmake --preset macos-testflight -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO
+xcodebuild archive -project _build_macos-testflight/EmptyEpsilon.xcodeproj \
+  -scheme EmptyEpsilon -configuration Release -destination 'generic/platform=macOS' \
+  -archivePath /tmp/EmptyEpsilon-Mac.xcarchive \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual
+python3 tests/appleBundle.py \
+  /tmp/EmptyEpsilon-Mac.xcarchive/Products/Applications/EmptyEpsilon.app MacOSX Xcode
+```
+
+The sandbox permits incoming and outgoing game connections, microphone input for
+voice chat, and serial bridge hardware. Preferences and user resources live inside
+the app's container; the regular desktop DMG continues using its existing location.
+The Mac privacy manifest also covers SDL's application-local Cocoa preferences.
+See Apple's [sandbox entitlements](https://developer.apple.com/library/archive/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/EnablingAppSandbox.html).
+
 ## Verification and known issues
 
 Unsigned iPad and Apple TV device builds and their bundle checks pass with Xcode 27.
 Device archives also pass checks for app icons, privacy manifests, game assets,
-and matching crash-symbol UUIDs. Signing and TestFlight upload await API credentials.
+and matching crash-symbol UUIDs. Cloud signing and export have also been verified
+with the configured team API key; upload status is recorded in GitHub Actions.
+The native Mac archive passes the same packaging checks plus signature and sandbox
+entitlement checks, and exports a cloud-signed App Store PKG. A sandboxed runtime
+check from the build host is blocked before `main` by a user-session mismatch in
+macOS's `secinitd`; interactive launch, voice chat, and serial hardware still need
+testing from TestFlight on a logged-in Mac.
 The iPad simulator joins a desktop server, selects a ship and main screen, accepts
 text input, and resumes after backgrounding with preferences saved. The existing
 macOS camera test also passes.
