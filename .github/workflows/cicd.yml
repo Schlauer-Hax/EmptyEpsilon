@@ -62,7 +62,7 @@ jobs:
     steps:
       - name: Dependencies
         run: |
-          brew install sdl2
+          brew install sdl2 sdl3
       - name: SeriousProton Checkout
         uses: actions/checkout@v4
         with:
@@ -84,6 +84,8 @@ jobs:
           APP_PATH="./EmptyEpsilon.app"
           mkdir -p "$APP_PATH/Contents/Frameworks"
           cp $(brew --prefix sdl2)/lib/libSDL2-2.0.0.dylib "$APP_PATH/Contents/Frameworks/"
+          # sdl2-compat loads SDL3 dynamically using this filename next to its own library.
+          cp -L "$(brew --prefix sdl3)/lib/libSDL3.dylib" "$APP_PATH/Contents/Frameworks/libSDL3.dylib"
           cp $(brew --prefix freetype)/lib/libfreetype.6.dylib "$APP_PATH/Contents/Frameworks/"
           cp $(brew --prefix libpng)/lib/libpng16.16.dylib "$APP_PATH/Contents/Frameworks/" || true
           install_name_tool -add_rpath @executable_path/../Frameworks "$APP_PATH/Contents/MacOS/EmptyEpsilon"
