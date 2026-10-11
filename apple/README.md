@@ -75,9 +75,12 @@ elapsed-time measurements used by SDL and the game.
 
 ## TestFlight
 
-The **TestFlight** GitHub Actions workflow runs on every push to `master` and can
-also be started manually. It archives the native macOS, iPad, and Apple TV apps,
-checks their contents, then signs and uploads them with `xcodebuild -exportArchive`.
+The **Apple builds** GitHub Actions workflow runs on pull requests, pushes to
+`master`, and manual dispatches. Each platform is compiled and archived once.
+The workflow checks the native macOS, iPad, and Apple TV apps and saves downloadable
+artifacts before signing and uploading those same archives with
+`xcodebuild -exportArchive`. TestFlight uploads run only on `master`; pull requests
+build and publish artifacts without requiring Apple secrets.
 It uses Apple's cloud-managed distribution certificates; no certificate or
 provisioning-profile files need to be stored in GitHub.
 
@@ -101,7 +104,7 @@ One-time setup:
    | Secret | `APP_STORE_CONNECT_PRIVATE_KEY` | The complete `.p8` file contents, including its header and footer |
 
 Push builds use the UTC build date as the game version, matching the desktop CI.
-For a specific server version, run **Actions → TestFlight → Run workflow** and enter
+For a specific server version, run **Actions → Apple builds → Run workflow** on `master` and enter
 that version, such as `2026.10.11`. Commits marked `[skip ci]` do not start push builds.
 The workflow assigns a distinct Apple build
 number from the run number and retry attempt (`1.1`, `1.2`, `2.1`, …), leaving the
@@ -111,11 +114,13 @@ game's network version unchanged. For local builds, override this number with
 After Apple finishes processing, the builds appear under the app's TestFlight
 tab. Select tester groups there; external testing may require Apple's beta review.
 The workflow does not configure tester groups or submit an App Store release.
-Each platform retains its archive, crash symbols, build/upload logs,
-and any exported IPA or PKG for seven days in the workflow artifacts. Mac archives
-use ad-hoc signing to preserve sandbox entitlements before distribution signing.
-The API key is
-written only to a temporary file during upload and removed when that step exits.
+Build artifacts retain each archive, crash symbols, and build log, plus an unsigned
+app ZIP for iPad/tvOS or a standalone DMG for Mac. These are uploaded before
+TestFlight signing, so a signing/upload failure still leaves downloadable builds.
+Upload logs and any exported IPA or PKG are saved separately. Artifacts are kept
+for seven days. Mac archives use ad-hoc signing to preserve sandbox entitlements
+before distribution signing. The API key is written only to a temporary file
+during upload and removed when that step exits.
 
 If signing fails with a cloud-signing or missing-profile error, check the separate
 cloud-certificate permission first. An upload is not verified until a run succeeds
@@ -138,7 +143,10 @@ python3 tests/appleBundle.py \
 
 The sandbox permits incoming and outgoing game connections, microphone input for
 voice chat, and serial bridge hardware. Preferences and user resources live inside
-the app's container; the regular desktop DMG continues using its existing location.
+the app's container. The standalone DMG is made from a copy of the same compiled
+app, re-signed without the sandbox so it keeps the regular desktop permissions and
+configuration location. The original archive stays sandboxed for TestFlight.
+The camera and slider tests are built alongside the Mac archive and run before upload.
 The Mac privacy manifest also covers SDL's application-local Cocoa preferences.
 See Apple's [sandbox entitlements](https://developer.apple.com/library/archive/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/EnablingAppSandbox.html).
 
@@ -153,6 +161,9 @@ entitlement checks, and exports a cloud-signed App Store PKG. A sandboxed runtim
 check from the build host is blocked before `main` by a user-session mismatch in
 macOS's `secinitd`; interactive launch, voice chat, and serial hardware still need
 testing from TestFlight on a logged-in Mac.
+The standalone DMG reuses the archive binary, passes signature and disk-image
+checks, and its app loads a scenario and accepts a local game connection. Both
+Mac unit tests pass when built as dependencies of the archive.
 The iPad simulator joins a desktop server, selects a ship and main screen, accepts
 text input, and resumes after backgrounding with preferences saved. The existing
 macOS camera test also passes.

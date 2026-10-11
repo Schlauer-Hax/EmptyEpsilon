@@ -1,8 +1,9 @@
-name: TestFlight
+name: Apple builds
 
 on:
   push:
     branches: [master]
+  pull_request:
   workflow_dispatch:
     inputs:
       version:
@@ -14,11 +15,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: testflight
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('apple-pr-{0}', github.event.pull_request.number) || 'testflight' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  upload:
+  build:
     runs-on: macos-latest
     timeout-minutes: 60
     strategy:
@@ -41,21 +42,11 @@ jobs:
       APP_VERSION: ${{ inputs.version }}
       BUILD_NUMBER: ${{ github.run_number }}.${{ github.run_attempt }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-      APPLE_BUNDLE_ID: ${{ vars.APPLE_BUNDLE_ID }}
+      APPLE_BUNDLE_ID: ${{ vars.APPLE_BUNDLE_ID || 'sh.mgp.emptyepsilon' }}
     steps:
       - uses: actions/checkout@v4
-      - name: Check configuration
-        env:
-          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+      - name: Set version
         run: |
-          for name in APPLE_TEAM_ID APPLE_BUNDLE_ID KEY_ID ISSUER_ID PRIVATE_KEY; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::Missing $name. See apple/README.md for TestFlight setup."
-              exit 1
-            fi
-          done
           APP_VERSION="${APP_VERSION:-$(date -u +%Y.%-m.%-d)}"
           if [[ ! "$APP_VERSION" =~ ^[1-9][0-9]{0,3}\.(0|[1-9][0-9]?)\.(0|[1-9][0-9]?)$ ]]; then
             echo '::error::Version must contain three numbers, for example 2026.10.11.'
@@ -91,17 +82,71 @@ jobs:
             "${signing[@]}" -jobs 3 2>&1 | tee "$RUNNER_TEMP/archive.log"
           python3 tests/appleBundle.py \
             "$RUNNER_TEMP/EmptyEpsilon.xcarchive/Products/Applications/EmptyEpsilon.app" "$PLATFORM" Xcode
+      - name: Run Mac tests
+        if: matrix.platform == 'MacOSX'
+        run: ctest --test-dir "_build_$TARGET" -C Release --output-on-failure -R '^(camera_state|progress_slider)$'
+      - name: Package build artifacts
+        if: always()
+        run: |
+          archive="$RUNNER_TEMP/EmptyEpsilon.xcarchive"
+          if [[ -d "$archive" ]]; then
+            ditto -c -k --sequesterRsrc --keepParent \
+              "$archive" "$RUNNER_TEMP/EmptyEpsilon-$TARGET.xcarchive.zip"
+            app="$archive/Products/Applications/EmptyEpsilon.app"
+            if [[ "$PLATFORM" == MacOSX ]]; then
+              # Reuse the archived binary; the standalone DMG keeps normal desktop permissions.
+              staging="$RUNNER_TEMP/dmg_contents"
+              mkdir -p "$staging"
+              ditto "$app" "$staging/EmptyEpsilon.app"
+              codesign --remove-signature "$staging/EmptyEpsilon.app"
+              codesign --force --sign - "$staging/EmptyEpsilon.app"
+              codesign --verify --strict "$staging/EmptyEpsilon.app"
+              ln -s /Applications "$staging/Applications"
+              attempt=0
+              until hdiutil create -volname EmptyEpsilon -srcfolder "$staging" -ov -format UDZO \
+                "$RUNNER_TEMP/MacOS_EmptyEpsilon_EE-$APP_VERSION-arm64.dmg"; do
+                if (( attempt >= 10 )); then exit 1; fi
+                attempt=$((attempt + 1))
+                sleep 1
+              done
+            else
+              ditto -c -k --sequesterRsrc --keepParent \
+                "$app" "$RUNNER_TEMP/EmptyEpsilon-$TARGET-unsigned.zip"
+            fi
+          fi
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EmptyEpsilon-${{ matrix.target }}-${{ env.APP_VERSION }}-${{ github.run_number }}.${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/EmptyEpsilon-*.xcarchive.zip
+            ${{ runner.temp }}/EmptyEpsilon-*-unsigned.zip
+            ${{ runner.temp }}/*.dmg
+            ${{ runner.temp }}/archive.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Sign and upload to TestFlight
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         env:
           KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
         run: |
           set -o pipefail
-          umask 077
+          for name in APPLE_TEAM_ID KEY_ID ISSUER_ID PRIVATE_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing $name. See apple/README.md for TestFlight setup."
+              exit 1
+            fi
+          done
           key_path="$RUNNER_TEMP/AuthKey.p8"
           trap 'rm -f "$key_path"' EXIT
-          printf '%s' "$PRIVATE_KEY" > "$key_path"
+          # Restrict the key only; Mac installer payloads must remain world-readable.
+          (
+            umask 077
+            printf '%s' "$PRIVATE_KEY" > "$key_path"
+          )
           unset PRIVATE_KEY
           python3 - <<'PY'
           import os, pathlib, plistlib
@@ -123,20 +168,12 @@ jobs:
             -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID" \
             2>&1 | tee "$RUNNER_TEMP/upload.log"
           echo "Uploaded $TARGET $APP_VERSION ($BUILD_NUMBER). Apple processing may take several minutes." >> "$GITHUB_STEP_SUMMARY"
-      - name: Package archive and crash symbols
-        if: always()
-        run: |
-          if [[ -d "$RUNNER_TEMP/EmptyEpsilon.xcarchive" ]]; then
-            ditto -c -k --sequesterRsrc --keepParent \
-              "$RUNNER_TEMP/EmptyEpsilon.xcarchive" "$RUNNER_TEMP/EmptyEpsilon-$TARGET.xcarchive.zip"
-          fi
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - name: Upload TestFlight logs and exports
+        uses: actions/upload-artifact@v4
+        if: always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         with:
           name: TestFlight-${{ matrix.target }}-${{ env.APP_VERSION }}-${{ github.run_number }}.${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/EmptyEpsilon-*.xcarchive.zip
-            ${{ runner.temp }}/archive.log
             ${{ runner.temp }}/upload.log
             ${{ runner.temp }}/TestFlight/*.ipa
             ${{ runner.temp }}/TestFlight/*.pkg

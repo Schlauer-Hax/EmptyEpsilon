@@ -85,6 +85,10 @@ add_custom_command(TARGET EmptyEpsilon POST_BUILD
     VERBATIM)
 
 if(BUILD_TESTING)
+    if(EE_APPLE_TESTFLIGHT)
+        # Build the desktop tests with the archive, reusing its compiled libraries.
+        add_dependencies(EmptyEpsilon camera_state_test progress_slider_test)
+    endif()
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     add_test(NAME apple_bundle COMMAND ${Python3_EXECUTABLE}
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/appleBundle.py"
