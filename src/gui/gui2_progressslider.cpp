@@ -2,19 +2,25 @@
 #include "theme.h"
 
 
-GuiProgressSlider::GuiProgressSlider(GuiContainer* owner, string id, float min_value, float max_value, float start_value, func_t func)
-: GuiProgressbar(owner, id, min_value, max_value, start_value), callback(func)
+GuiProgressSlider::GuiProgressSlider(GuiContainer* owner, string id, float min_value, float max_value, float start_value, func_t func, std::function<void()> right_click_func)
+: GuiProgressbar(owner, id, min_value, max_value, start_value), callback(func), right_click_callback(right_click_func)
 {
 }
 
 bool GuiProgressSlider::onMouseDown(sp::io::Pointer::Button button, glm::vec2 position, sp::io::Pointer::ID id)
 {
-    onMouseDrag(position, id);
+    right_click = button == sp::io::Pointer::Button::Right && right_click_callback;
+    if (right_click)
+        right_click_callback();
+    else
+        onMouseDrag(position, id);
     return true;
 }
 
 void GuiProgressSlider::onMouseDrag(glm::vec2 position, sp::io::Pointer::ID id)
 {
+    if (right_click)
+        return;
     float new_value;
     if (rect.size.x > rect.size.y)
         new_value = (position.x - rect.position.x) / (rect.size.x);

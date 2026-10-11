@@ -9,7 +9,7 @@ class GuiProgressSlider : public GuiProgressbar
 public:
     typedef std::function<void(float value)> func_t;
 
-    GuiProgressSlider(GuiContainer* owner, string id, float min_value, float max_value, float start_value, func_t func);
+    GuiProgressSlider(GuiContainer* owner, string id, float min_value, float max_value, float start_value, func_t func, std::function<void()> right_click_func = {});
 
     virtual bool onMouseDown(sp::io::Pointer::Button button, glm::vec2 position, sp::io::Pointer::ID id) override;
     virtual void onMouseDrag(glm::vec2 position, sp::io::Pointer::ID id) override;
@@ -17,6 +17,8 @@ public:
 
 private:
     func_t callback;
+    std::function<void()> right_click_callback;
+    bool right_click = false;
 };
 
 #endif//GUI2_PROGRESSSLIDER_H

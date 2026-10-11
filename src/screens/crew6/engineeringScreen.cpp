@@ -127,6 +127,11 @@ EngineeringScreen::EngineeringScreen(GuiContainer* owner, CrewPosition crew_posi
             {
                 if (my_spaceship)
                     my_player_info->commandSetSystemPowerRequest(ShipSystem::Type(n), value);
+            },
+            [n]()
+            {
+                if (my_spaceship)
+                    my_player_info->commandSetSystemPowerRequest(ShipSystem::Type(n), 1.0f);
             }
         );
         info.power_bar->setColor(glm::u8vec4(192, 192, 32, 128))->setSize(column_width, GuiElement::GuiSizeMax);
@@ -135,6 +140,11 @@ EngineeringScreen::EngineeringScreen(GuiContainer* owner, CrewPosition crew_posi
             {
                 if (my_spaceship)
                     my_player_info->commandSetSystemCoolantRequest(ShipSystem::Type(n), value);
+            },
+            [n]()
+            {
+                if (auto coolant = my_spaceship.getComponent<Coolant>())
+                    my_player_info->commandSetSystemCoolantRequest(ShipSystem::Type(n), coolant->max_coolant_per_system);
             }
         );
         info.coolant_bar
