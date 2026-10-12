@@ -15,6 +15,7 @@
     <key>LSApplicationCategoryType</key><string>public.app-category.games</string>
     <key>NSHighResolutionCapable</key><false/>
     <key>NSLocalNetworkUsageDescription</key><string>Empty Epsilon connects to and hosts bridge simulation games on your local network.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key><string>Empty Epsilon uses Bluetooth to connect to wireless game controllers so you can control the game.</string>
     <key>NSMicrophoneUsageDescription</key><string>Empty Epsilon uses your microphone for in-game voice chat when you enable it.</string>
     <key>ITSAppUsesNonExemptEncryption</key><false/>
 </dict>

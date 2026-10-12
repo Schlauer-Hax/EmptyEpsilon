@@ -36,6 +36,7 @@
     <key>UIViewControllerBasedStatusBarAppearance</key><false/>
     <key>UIApplicationSupportsIndirectInputEvents</key><true/>
     <key>NSLocalNetworkUsageDescription</key><string>Connect to your Empty Epsilon bridge server on the local network.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key><string>Empty Epsilon uses Bluetooth to connect to wireless game controllers so you can control the game.</string>
     <key>ITSAppUsesNonExemptEncryption</key><false/>
 </dict>
 </plist>
